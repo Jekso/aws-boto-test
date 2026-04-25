@@ -1,0 +1,72 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowListProjectBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::emmar-cam-detection-dev-salesforce-storage"
+    },
+    {
+      "Sid": "AllowReadWriteProjectBucketObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::emmar-cam-detection-dev-salesforce-storage/*"
+    },
+    {
+      "Sid": "AllowAmazonNovaBedrockInvoke",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:GetInferenceProfile",
+        "bedrock:ListInferenceProfiles"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:*::foundation-model/amazon.nova-lite-v1:0",
+        "arn:aws:bedrock:*::foundation-model/amazon.nova-pro-v1:0",
+        "arn:aws:bedrock:*:*:inference-profile/eu.amazon.nova-lite-v1:0",
+        "arn:aws:bedrock:*:*:inference-profile/eu.amazon.nova-pro-v1:0"
+      ]
+    },
+    {
+      "Sid": "AllowIoTConnectForEC2Client",
+      "Effect": "Allow",
+      "Action": [
+        "iot:Connect"
+      ],
+      "Resource": "arn:aws:iot:eu-west-1:728419474005:client/ec2-python-*"
+    },
+    {
+      "Sid": "AllowIoTPublishAndReceive",
+      "Effect": "Allow",
+      "Action": [
+        "iot:Publish",
+        "iot:Receive"
+      ],
+      "Resource": "arn:aws:iot:eu-west-1:728419474005:topic/street/incidents/*"
+    },
+    {
+      "Sid": "AllowIoTSubscribe",
+      "Effect": "Allow",
+      "Action": [
+        "iot:Subscribe"
+      ],
+      "Resource": "arn:aws:iot:eu-west-1:728419474005:topicfilter/street/incidents/*"
+    },
+    {
+      "Sid": "AllowDescribeIoTEndpoint",
+      "Effect": "Allow",
+      "Action": [
+        "iot:DescribeEndpoint"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
