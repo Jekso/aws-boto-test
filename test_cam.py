@@ -1,35 +1,61 @@
 import os
 import time
-import cv2
+from pathlib import Path
 
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
+# Important on Windows: point Python to VLC installation folder
+VLC_DIR = r"C:\Program Files\VideoLAN\VLC"
+if os.path.exists(VLC_DIR):
+    os.add_dll_directory(VLC_DIR)
 
-rtsp_url = "rtsp://test:Admin_123@10.10.15.10:554/live/CAMERA_GUID/1"
+import vlc
 
-cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
 
-if not cap.isOpened():
-    raise RuntimeError("Could not open RTSP stream")
+RTSP_URL = "rtsp://YOUR_MILESTONE_SERVER/your/rtsp/path"
+USERNAME = "your_username"
+PASSWORD = "your_password"
 
-frame_interval_seconds = 3
-last_processed = 0.0
+OUTPUT_DIR = Path("frames")
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-while True:
-    ret, frame = cap.read()
 
-    if not ret:
-        print("Frame read failed")
-        time.sleep(1)
-        continue
+instance = vlc.Instance(
+    "--rtsp-tcp",
+    "--network-caching=500",
+    "--no-audio"
+)
 
-    now = time.time()
+media = instance.media_new(RTSP_URL)
 
-    if now - last_processed < frame_interval_seconds:
-        continue
+# This is the important part: pass auth like VLC, not only inside the URL
+media.add_option(f":rtsp-user={USERNAME}")
+media.add_option(f":rtsp-pwd={PASSWORD}")
 
-    last_processed = now
+player = instance.media_player_new()
+player.set_media(media)
 
-    frame = cv2.resize(frame, (640, 360))
+print("Starting stream...")
+player.play()
 
-    # Send this frame to your AI model
-    print("Processing frame:", frame.shape)
+# Give VLC time to connect and decode first frames
+time.sleep(5)
+
+for i in range(10):
+    output_path = OUTPUT_DIR / f"camera_frame_{i:03d}.jpg"
+
+    # Width/height here are the saved snapshot size.
+    # VLC still receives the original stream, but saves the image smaller.
+    result = player.video_take_snapshot(
+        0,
+        str(output_path),
+        640,
+        360
+    )
+
+    if result == 0:
+        print(f"Saved: {output_path}")
+    else:
+        print("Snapshot failed. Stream may not be ready yet.")
+
+    time.sleep(2)
+
+player.stop()
