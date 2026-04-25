@@ -131,15 +131,15 @@ def main() -> None:
 
     region = env_required("AWS_REGION")
     bucket = env_required("S3_BUCKET")
-    # iot_endpoint = env_required("IOT_ENDPOINT")
-    # iot_client_id = os.getenv("IOT_CLIENT_ID", "ec2-python-demo-01")
-    # iot_topic = os.getenv("IOT_TOPIC", "street/incidents/test")
+    iot_endpoint = env_required("IOT_ENDPOINT")
+    iot_client_id = os.getenv("IOT_CLIENT_ID", "ec2-python-demo-01")
+    iot_topic = os.getenv("IOT_TOPIC", "street/incidents/test")
     bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "qwen.qwen3-vl-235b-a22b")
     sample_image_path = os.getenv("SAMPLE_IMAGE_PATH")
 
     # demo_s3(region, bucket, sample_image_path)
-    demo_bedrock(region, bedrock_model_id, sample_image_path)
-    # demo_iot(region, iot_endpoint, iot_client_id, iot_topic)
+    # demo_bedrock(region, bedrock_model_id, sample_image_path)
+    demo_iot(region, iot_endpoint, iot_client_id, iot_topic)
 
 
 if __name__ == "__main__":
