@@ -135,7 +135,7 @@ def main() -> None:
     # iot_client_id = os.getenv("IOT_CLIENT_ID", "ec2-python-demo-01")
     # iot_topic = os.getenv("IOT_TOPIC", "street/incidents/test")
     # bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "qwen.qwen3-vl-235b-a22b")
-    # sample_image_path = os.getenv("SAMPLE_IMAGE_PATH")
+    sample_image_path = os.getenv("SAMPLE_IMAGE_PATH")
 
     demo_s3(region, bucket, sample_image_path)
     # demo_bedrock(region, bedrock_model_id, sample_image_path)
