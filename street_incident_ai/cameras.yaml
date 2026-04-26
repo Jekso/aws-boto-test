@@ -2,12 +2,12 @@
 # For first tests, keep one local video or image enabled and RTSP disabled.
 
 cameras:
-  - camera_id: local_video_001
+  - camera_id: video_001
     name: Local Video Test Camera
     enabled: true
     source_type: video
     reader: opencv
-    url: data/input/sample_video.mp4
+    url: data/input/full.mp4
     location: Local Test
     sample_fps: 1.0
     resize_width: 650
@@ -19,12 +19,12 @@ cameras:
       site: test_site
       area: test_area
 
-  - camera_id: local_image_001
+  - camera_id: image_001
     name: Local Image Test Camera
-    enabled: false
+    enabled: true
     source_type: image
     reader: opencv
-    url: data/input/sample_image.jpg
+    url: data/input/cctv_trash.png
     location: Local Test
     sample_fps: 1.0
     resize_width: 650
@@ -36,15 +36,15 @@ cameras:
       site: test_site
       area: test_area
 
-  - camera_id: rtsp_camera_001
+  - camera_id: camera_001
     name: RTSP Camera Test
-    enabled: false
+    enabled: true
     source_type: rtsp
     # Use vlc when OpenCV/FFmpeg fail but VLC desktop can authenticate.
     reader: vlc
-    url: rtsp://camera-ip-or-server/path
-    username: your-rtsp-username
-    password: your-rtsp-password
+    url: rtsp://10.10.15.10:554/vod/5C0B2920-5DAB-4937-B8BC-5B729F6DD5DF
+    username: test
+    password: Admin_123
     location: Street Gate 1
     sample_fps: 1.0
     resize_width: 650
