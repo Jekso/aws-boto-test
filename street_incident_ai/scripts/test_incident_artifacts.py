@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import cv2
@@ -39,10 +40,15 @@ def main() -> None:
     annotated = detector.annotate(frame, raw_detections, detection.labels)
 
     incident_id = str(uuid4())
-    local_output = config.output_dir / "artifact_test" / f"{incident_id}.jpg"
+    now = datetime.now(timezone.utc)
+    date_part = now.strftime("%Y-%m-%d")
+    incident_type = detection.incident_type
+    camera_id = "artifact_test"
+    local_output = config.output_dir / date_part / incident_type / camera_id / incident_id / "annotated.jpg"
     detector.save_image(annotated, local_output)
-    image_key = f"{config.s3_prefix}/artifact-tests/{incident_id}.jpg"
-    metadata_key = f"{config.s3_prefix}/artifact-tests/{incident_id}.json"
+    base_key = f"{config.s3_prefix}/date={date_part}/incident_type={incident_type}/camera_id={camera_id}/incident_id={incident_id}"
+    image_key = f"{base_key}/annotated.jpg"
+    metadata_key = f"{base_key}/metadata.json"
     image_s3_uri, image_url = s3.upload_incident_image(local_output, image_key, metadata={"test": "incident_artifacts"})
     metadata = {
         "incident_id": incident_id,

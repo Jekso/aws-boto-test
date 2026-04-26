@@ -11,7 +11,7 @@ from street_incident_ai.bedrock_reasoner import BedrockNovaReasoner
 from street_incident_ai.config import AppConfig
 from street_incident_ai.detector import YOLOEObjectDetector
 from street_incident_ai.iot_core import IoTCoreMqttPublisher
-from street_incident_ai.models import FramePacket, IncidentEvent, S3Artifact, safe_filename
+from street_incident_ai.models import FramePacket, IncidentEvent, ReasoningResult, S3Artifact, safe_filename
 from street_incident_ai.s3_storage import S3Storage
 from street_incident_ai.salesforce_client import SalesforceCaseClient
 
@@ -73,13 +73,45 @@ class IncidentService:
             return packet.camera.cooldown_seconds_garbage
         return 60
 
-    def _build_keys(self, packet: FramePacket, incident_id: str) -> tuple[str, str, Path]:
-        ts = packet.captured_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    @staticmethod
+    def _external_send_allowed(reasoning: ReasoningResult) -> bool:
+        """Return True only for incidents that should be sent to Salesforce and IoT.
+
+        Business rule:
+            - Garbage is sent only when Bedrock classifies it as unsafe.
+            - Pet is sent only when Bedrock classifies it as likely_lost.
+            - Safe garbage, not_lost pets, uncertain pets, unknown types, or malformed
+              responses are logged only and are not sent to external integrations.
+        """
+        status = str(reasoning.raw_response.get("status", "")).lower().strip()
+
+        if reasoning.incident_type == "street_garbage":
+            return reasoning.is_incident and status == "unsafe"
+
+        if reasoning.incident_type == "lost_pet":
+            return reasoning.is_incident and status == "likely_lost"
+
+        return False
+
+    def _build_keys(self, packet: FramePacket, incident_id: str, incident_type: str) -> tuple[str, str, Path]:
+        """Build organized local and S3 paths for incident artifacts.
+
+        S3 layout:
+            {prefix}/date=YYYY-MM-DD/incident_type=TYPE/camera_id=CAMERA/incident_id=UUID/annotated.jpg
+            {prefix}/date=YYYY-MM-DD/incident_type=TYPE/camera_id=CAMERA/incident_id=UUID/metadata.json
+        """
+        captured_utc = packet.captured_at.astimezone(timezone.utc)
+        date_part = captured_utc.strftime("%Y-%m-%d")
         camera_id = safe_filename(packet.camera.camera_id)
+        incident_type_safe = safe_filename(incident_type or "unknown")
         prefix = self.config.s3_prefix.strip("/")
-        image_key = f"{prefix}/{camera_id}/{ts}_{incident_id}.jpg"
-        metadata_key = f"{prefix}/{camera_id}/{ts}_{incident_id}.json"
-        local_image_path = self.config.output_dir / camera_id / f"{ts}_{incident_id}.jpg"
+        base_key = (
+            f"{prefix}/date={date_part}/incident_type={incident_type_safe}/"
+            f"camera_id={camera_id}/incident_id={incident_id}"
+        )
+        image_key = f"{base_key}/annotated.jpg"
+        metadata_key = f"{base_key}/metadata.json"
+        local_image_path = self.config.output_dir / date_part / incident_type_safe / camera_id / incident_id / "annotated.jpg"
         return image_key, metadata_key, local_image_path
 
     def process_frame(self, packet: FramePacket) -> IncidentEvent | None:
@@ -98,15 +130,18 @@ class IncidentService:
         reasoning = self.reasoner.analyze_frame(packet, detection)
         if not reasoning.is_incident:
             logger.info(
-                "Bedrock rejected incident camera_id={} preliminary_type={} description={}",
+                "Bedrock classified detection as non-actionable. External integrations skipped. "
+                "camera_id={} preliminary_type={} bedrock_type={} status={} description={}",
                 packet.camera.camera_id,
                 detection.incident_type,
+                reasoning.incident_type,
+                reasoning.raw_response.get("status"),
                 reasoning.description,
             )
             return None
 
         incident_id = str(uuid.uuid4())
-        image_key, metadata_key, local_image_path = self._build_keys(packet, incident_id)
+        image_key, metadata_key, local_image_path = self._build_keys(packet, incident_id, reasoning.incident_type)
         annotated = self.detector.annotate(packet.frame_bgr, raw_detections, detection.labels)
         self.detector.save_image(annotated, local_image_path)
 
@@ -133,23 +168,45 @@ class IncidentService:
             camera_metadata=packet.camera.metadata,
         )
 
-        # Salesforce first, then include the case number in the metadata and IoT message.
-        salesforce_result = self.salesforce.create_case(event)
-        event.salesforce_case = salesforce_result
+        external_send_allowed = self._external_send_allowed(reasoning)
+        if external_send_allowed:
+            # Salesforce first, then include the case number in the metadata and IoT message.
+            salesforce_result = self.salesforce.create_case(event)
+            event.salesforce_case = salesforce_result
 
+            metadata_s3_uri = self.s3.upload_json(event.to_dict(), metadata_key)
+            event.artifacts.metadata_s3_uri = metadata_s3_uri
+            event.artifacts.metadata_object_key = metadata_key
+
+            self.iot.publish(self.config.iot_topic, event.to_dict())
+            self.cooldown.mark(packet.camera.camera_id, reasoning.incident_type, now_epoch)
+            logger.success(
+                "Incident handled and external integrations notified incident_id={} camera_id={} "
+                "type={} status={} image_url={} case_number={}",
+                incident_id,
+                packet.camera.camera_id,
+                reasoning.incident_type,
+                reasoning.raw_response.get("status"),
+                image_url,
+                salesforce_result.case_number,
+            )
+            return event
+
+        # Defensive guard: this should rarely run because safe/not_lost/uncertain
+        # normally produce reasoning.is_incident=False and return earlier. It protects
+        # Salesforce and IoT from malformed or unexpected Bedrock responses.
         metadata_s3_uri = self.s3.upload_json(event.to_dict(), metadata_key)
         event.artifacts.metadata_s3_uri = metadata_s3_uri
         event.artifacts.metadata_object_key = metadata_key
-
-        self.iot.publish(self.config.iot_topic, event.to_dict())
         self.cooldown.mark(packet.camera.camera_id, reasoning.incident_type, now_epoch)
-        logger.success(
-            "Incident handled incident_id={} camera_id={} type={} image_url={} case_number={}",
+        logger.warning(
+            "Incident artifact saved, but Salesforce and IoT skipped by business rule. "
+            "incident_id={} camera_id={} type={} status={} metadata_s3_uri={}",
             incident_id,
             packet.camera.camera_id,
             reasoning.incident_type,
-            image_url,
-            salesforce_result.case_number,
+            reasoning.raw_response.get("status"),
+            metadata_s3_uri,
         )
         return event
 

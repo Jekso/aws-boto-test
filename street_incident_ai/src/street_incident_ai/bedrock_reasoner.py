@@ -12,6 +12,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from loguru import logger
 
 from street_incident_ai.models import DetectionResult, FramePacket, ReasoningResult
+from street_incident_ai.prompts import build_reasoning_prompt
 
 
 class BedrockReasoningError(RuntimeError):
@@ -90,28 +91,8 @@ class BedrockNovaReasoner:
 
     @staticmethod
     def _prompt(detection: DetectionResult) -> str:
-        trigger_classes = detection.pet_trigger_classes or detection.garbage_trigger_classes
-        return f"""
-You are an AI incident validation system for street camera frames.
-Analyze the WHOLE image, not only the detected box.
-YOLOE already detected these possible target classes: {trigger_classes}.
-The preliminary incident type is: {detection.incident_type}.
-
-Decide if this frame is a real actionable incident:
-- lost_pet: a dog/cat appears unattended or likely lost in a public/street context.
-- street_garbage: overflowing garbage, unsafe waste, scattered trash, or unhealthy garbage situation.
-- normal: object exists but no actionable incident.
-
-Return ONLY valid JSON with exactly these keys:
-{{
-  "is_incident": true,
-  "incident_type": "lost_pet | street_garbage | unknown",
-  "confidence_score": 0.0,
-  "risk_level": "low | medium | high | unknown",
-  "description": "short practical explanation",
-  "recommended_action": "short next action"
-}}
-""".strip()
+        """Return the task-specific reasoning prompt for this detection."""
+        return build_reasoning_prompt(detection)
 
     def _call_bedrock(self, image_bytes: bytes, image_format: str, prompt: str) -> dict[str, Any]:
         if self.dry_run:
@@ -175,19 +156,83 @@ Return ONLY valid JSON with exactly these keys:
         return self._to_reasoning_result(parsed, fallback_type=detection.incident_type)
 
     @staticmethod
-    def _to_reasoning_result(parsed: dict[str, Any], fallback_type: str) -> ReasoningResult:
-        confidence = parsed.get("confidence_score", 0.0)
+    def _normalize_confidence(value: Any) -> float:
+        """Normalize model confidence from 0-100 or 0-1 into 0-1."""
         try:
-            confidence_float = float(confidence)
+            confidence = float(value)
         except (TypeError, ValueError):
-            confidence_float = 0.0
+            return 0.0
+        if confidence > 1.0:
+            confidence = confidence / 100.0
+        return max(0.0, min(1.0, confidence))
+
+    @staticmethod
+    def _risk_from_confidence(confidence: float, is_incident: bool) -> str:
+        """Derive a simple risk label when the detailed prompt does not return one."""
+        if not is_incident:
+            return "low"
+        if confidence >= 0.80:
+            return "high"
+        if confidence >= 0.50:
+            return "medium"
+        return "low"
+
+    @classmethod
+    def _to_reasoning_result(cls, parsed: dict[str, Any], fallback_type: str) -> ReasoningResult:
+        """Map both legacy and task-specific prompt JSON into ReasoningResult.
+
+        Existing pipeline logic expects ReasoningResult.is_incident to decide whether
+        to create S3/Salesforce/IoT artifacts. The detailed Bedrock JSON is preserved
+        in raw_response for auditing.
+        """
+        confidence = cls._normalize_confidence(parsed.get("confidence_score", 0.0))
+        status = str(parsed.get("status", "")).lower().strip()
+
+        if status in {"safe", "unsafe"}:
+            is_incident = status == "unsafe"
+            result = ReasoningResult(
+                is_incident=is_incident,
+                incident_type="street_garbage",
+                confidence_score=confidence,
+                description=str(parsed.get("reason", "")),
+                risk_level=cls._risk_from_confidence(confidence, is_incident),
+                recommended_action="Create cleanup/inspection ticket." if is_incident else "No action required.",
+                raw_response=parsed,
+            )
+            logger.info(
+                "Bedrock waste reasoning complete status={} is_incident={} confidence={:.3f}",
+                status,
+                result.is_incident,
+                result.confidence_score,
+            )
+            return result
+
+        if status in {"likely_lost", "not_lost", "uncertain"}:
+            is_incident = status == "likely_lost"
+            result = ReasoningResult(
+                is_incident=is_incident,
+                incident_type="lost_pet",
+                confidence_score=confidence,
+                description=str(parsed.get("reason", "")),
+                risk_level=cls._risk_from_confidence(confidence, is_incident),
+                recommended_action="Create lost-pet review ticket." if is_incident else "No action required; continue monitoring.",
+                raw_response=parsed,
+            )
+            logger.info(
+                "Bedrock pet reasoning complete status={} is_incident={} confidence={:.3f}",
+                status,
+                result.is_incident,
+                result.confidence_score,
+            )
+            return result
+
         incident_type = str(parsed.get("incident_type") or fallback_type)
         if incident_type not in {"lost_pet", "street_garbage", "unknown"}:
             incident_type = "unknown"
         result = ReasoningResult(
             is_incident=bool(parsed.get("is_incident", False)),
             incident_type=incident_type,  # type: ignore[arg-type]
-            confidence_score=max(0.0, min(1.0, confidence_float)),
+            confidence_score=confidence,
             description=str(parsed.get("description", "")),
             risk_level=str(parsed.get("risk_level", "unknown")),
             recommended_action=str(parsed.get("recommended_action", "review")),
