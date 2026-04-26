@@ -1,0 +1,57 @@
+# You can configure one or many cameras.
+# For first tests, keep one local video or image enabled and RTSP disabled.
+
+cameras:
+  - camera_id: local_video_001
+    name: Local Video Test Camera
+    enabled: true
+    source_type: video
+    reader: opencv
+    url: data/input/sample_video.mp4
+    location: Local Test
+    sample_fps: 1.0
+    resize_width: 650
+    resize_height: 280
+    cooldown_seconds_pet: 300
+    cooldown_seconds_garbage: 900
+    loop_video: false
+    metadata:
+      site: test_site
+      area: test_area
+
+  - camera_id: local_image_001
+    name: Local Image Test Camera
+    enabled: false
+    source_type: image
+    reader: opencv
+    url: data/input/sample_image.jpg
+    location: Local Test
+    sample_fps: 1.0
+    resize_width: 650
+    resize_height: 280
+    cooldown_seconds_pet: 300
+    cooldown_seconds_garbage: 900
+    loop_video: false
+    metadata:
+      site: test_site
+      area: test_area
+
+  - camera_id: rtsp_camera_001
+    name: RTSP Camera Test
+    enabled: false
+    source_type: rtsp
+    # Use vlc when OpenCV/FFmpeg fail but VLC desktop can authenticate.
+    reader: vlc
+    url: rtsp://camera-ip-or-server/path
+    username: your-rtsp-username
+    password: your-rtsp-password
+    location: Street Gate 1
+    sample_fps: 1.0
+    resize_width: 650
+    resize_height: 280
+    cooldown_seconds_pet: 300
+    cooldown_seconds_garbage: 900
+    loop_video: false
+    metadata:
+      site: main_site
+      vendor: milestone_or_camera_vendor

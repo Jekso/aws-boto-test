@@ -137,8 +137,8 @@ def main() -> None:
     bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "qwen.qwen3-vl-235b-a22b")
     sample_image_path = os.getenv("SAMPLE_IMAGE_PATH")
 
-    # demo_s3(region, bucket, sample_image_path)
-    # demo_bedrock(region, bedrock_model_id, sample_image_path)
+    demo_s3(region, bucket, sample_image_path)
+    demo_bedrock(region, bedrock_model_id, sample_image_path)
     demo_iot(region, iot_endpoint, iot_client_id, iot_topic)
 
 

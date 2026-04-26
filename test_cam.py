@@ -3,16 +3,12 @@ import time
 from pathlib import Path
 
 # Important on Windows: point Python to VLC installation folder
-VLC_DIR = r"C:\Program Files\VideoLAN\VLC"
-if os.path.exists(VLC_DIR):
-    os.add_dll_directory(VLC_DIR)
-
 import vlc
 
 
-RTSP_URL = "rtsp://YOUR_MILESTONE_SERVER/your/rtsp/path"
-USERNAME = "your_username"
-PASSWORD = "your_password"
+RTSP_URL = "rtsp://10.10.15.10:554/live/9BC989DB-A305-455D-8622-247226C60D06"
+USERNAME = "test"
+PASSWORD = "Admin_123"
 
 OUTPUT_DIR = Path("frames")
 OUTPUT_DIR.mkdir(exist_ok=True)
