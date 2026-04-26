@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -113,7 +113,8 @@ def load_app_config(env_path: str | Path = ".env") -> AppConfig:
         dry_run_salesforce=_get_bool("DRY_RUN_SALESFORCE", False),
         dry_run_bedrock=_get_bool("DRY_RUN_BEDROCK", False),
     )
-    logger.debug("Loaded AppConfig: {}", {k: v for k, v in config.__dict__.items() if "secret" not in k.lower()})
+    safe_config = {k: v for k, v in asdict(config).items() if "secret" not in k.lower()}
+    logger.debug("Loaded AppConfig: {}", safe_config)
     return config
 
 
