@@ -4,11 +4,4 @@ __pycache__/
 .venv/
 logs/
 tmp/
-data/output/
-data/input/*.mp4
-data/input/*.avi
-data/input/*.mov
-data/input/*.mkv
-data/input/*.jpg
-data/input/*.jpeg
-data/input/*.png
+
